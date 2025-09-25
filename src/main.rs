@@ -1,5 +1,5 @@
 use actix_cors::Cors;
-use actix_web::{middleware::Logger, web::Data, App, HttpServer};
+use actix_web::{http::header, middleware::Logger, web::Data, App, HttpServer};
 use dotenvy::dotenv;
 use env_logger::Env;
 use ipnet::IpNet;
@@ -21,7 +21,6 @@ async fn main() -> std::io::Result<()> {
     dotenv().ok();
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
 
-    // --- DB URL ---
     let database_url = match env::var("DATABASE_URL") {
         Ok(url) => url,
         Err(_) => {
@@ -38,10 +37,8 @@ async fn main() -> std::io::Result<()> {
         .await
         .expect("Failed to create DB pool");
 
-    // --- JWT ---
     let jwt_secret = env::var("JWT_SECRET").unwrap_or_else(|_| "dev_secret".into());
 
-    // --- Network config ---
     let allowed_public_ip: Option<IpAddr> = env::var("ALLOWED_PUBLIC_IP")
         .ok()
         .and_then(|s| s.parse().ok());
@@ -50,17 +47,19 @@ async fn main() -> std::io::Result<()> {
         .ok()
         .and_then(|s| s.parse().ok());
 
-    let trust_x_forwarded_for = env::var("TRUST_X_FORWARDED_FOR")
-        .unwrap_or_else(|_| "0".into()) == "1";
+    let trust_x_forwarded_for =
+        env::var("TRUST_X_FORWARDED_FOR").unwrap_or_else(|_| "0".into()) == "1";
 
-    // --- CORS ---
-    let allowed_origins = env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| "http://localhost:3000".into());
+
+    let allowed_origins =
+        env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| "http://localhost:3000".into());
     let origins: Vec<String> = allowed_origins
         .split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
 
+    // --- Bind host/port ---
     let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
     let port = env::var("PORT").unwrap_or_else(|_| "8080".into());
     let addr = format!("{}:{}", host, port);
@@ -80,14 +79,17 @@ async fn main() -> std::io::Result<()> {
     };
 
     HttpServer::new(move || {
-        // CORS builder
-        let mut cors = Cors::default()
-            .allow_any_header()
-            .allowed_methods(vec!["GET", "POST", "OPTIONS"]);
-
-        for o in &origins {
-            cors = cors.allowed_origin(o);
-        }
+        let cors = origins.iter().fold(
+            Cors::default()
+                .allowed_methods(vec!["GET", "POST", "OPTIONS"])
+                .allowed_headers(vec![
+                    header::CONTENT_TYPE,
+                    header::AUTHORIZATION,
+                    header::ACCEPT,
+                ])
+                .max_age(3600),
+            |c, origin| c.allowed_origin(origin),
+        );
 
         App::new()
             .wrap(Logger::default())

@@ -12,7 +12,7 @@ use crate::{
 struct Claims {
     sub: u64,
     email: String,
-    exp: usize, // epoch seconds
+    exp: usize,
 }
 
 pub async fn register(
@@ -116,7 +116,6 @@ pub async fn me(state: web::Data<AppState>, req: HttpRequest) -> Result<HttpResp
     let data = jsonwebtoken::decode::<Claims>(token, &decoding, &validation)
         .map_err(|_| ApiError::Unauthorized("Invalid token".into()))?;
 
-    // ⬇️ CAST created_at → DATETIME lagi
     let user: Option<User> = sqlx::query_as::<_, User>(
         r#"
         SELECT

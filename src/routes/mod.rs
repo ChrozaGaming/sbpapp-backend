@@ -1,4 +1,4 @@
-use actix_web::web;
+use actix_web::{web, HttpResponse, Responder};
 
 pub mod auth;
 pub mod absensi;
@@ -9,12 +9,14 @@ pub fn config_routes(cfg: &mut web::ServiceConfig) {
             .route("/health", web::get().to(health))
             .service(
                 web::scope("/api")
-                    .service(web::resource("/register").route(web::post().to(auth::register)))
-                    .service(web::resource("/login").route(web::post().to(auth::login)))
-                    .service(web::resource("/me").route(web::get().to(auth::me)))
-                    .service(web::resource("/absensi").route(web::post().to(absensi::create_absensi))),
+                    .route("/register", web::post().to(auth::register))
+                    .route("/login", web::post().to(auth::login))
+                    .route("/me", web::get().to(auth::me))
+                    .route("/absensi", web::post().to(absensi::create_absensi)),
             ),
     );
 }
 
-async fn health() -> &'static str { "ok" }
+async fn health() -> impl Responder {
+    HttpResponse::Ok().body("ok")
+}

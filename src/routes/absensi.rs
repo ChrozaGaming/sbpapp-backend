@@ -29,7 +29,6 @@ pub async fn create_absensi(
 ) -> Result<HttpResponse, ApiError> {
     let mut input = body.into_inner();
 
-    // ambil IP client
     let ip = get_client_ip(&req, state.trust_x_forwarded_for)
         .unwrap_or_else(|| "127.0.0.1".parse().unwrap());
     let ip_str = ip.to_string();
@@ -37,7 +36,6 @@ pub async fn create_absensi(
     let dev_allow_loopback =
         env::var("DEV_ALLOW_LOOPBACK").unwrap_or_else(|_| "0".to_string()) == "1";
 
-    // Validasi IP
     let mut ipverified = false;
     if let Some(pubip) = state.allowed_public_ip {
         if ip == pubip {
@@ -54,18 +52,17 @@ pub async fn create_absensi(
     if !ipverified && dev_allow_loopback && ip.is_loopback() {
         ipverified = true;
     }
-
     if !ipverified {
-        return Err(ApiError::Forbidden(format!("IP {} tidak diizinkan", ip_str)));
+        return Err(ApiError::Forbidden(format!(
+            "IP {} tidak diizinkan", ip_str
+        )));
     }
 
     input.ip_device = Some(ip_str);
 
-    // parsing tanggal
     let tgl = NaiveDate::parse_from_str(&input.tanggal_absensi, "%Y-%m-%d")
         .map_err(|_| ApiError::BadRequest("tanggal_absensi harus format YYYY-MM-DD".into()))?;
 
-    // parsing waktu
     let waktu_formats = [
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%d %H:%M",
@@ -83,7 +80,21 @@ pub async fn create_absensi(
         ApiError::BadRequest("waktu_absensi harus format: YYYY-MM-DD HH:MM[:SS]".into())
     })?;
 
-    // insert
+    let exists: Option<(u64,)> = sqlx::query_as(
+        r#"SELECT id FROM absensi WHERE email = ? AND tanggal_absensi = ? LIMIT 1"#,
+    )
+    .bind(&input.email)
+    .bind(tgl)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::Internal(format!("DB check error: {e}")))?;
+
+    if exists.is_some() {
+        return Err(ApiError::Conflict(
+            "Anda sudah absen pada hari ini.".into(),
+        ));
+    }
+
     let result = sqlx::query(
         r#"
         INSERT INTO absensi
@@ -103,11 +114,17 @@ pub async fn create_absensi(
     .bind(&input.status)
     .execute(&state.pool)
     .await
-    .map_err(|e| ApiError::Internal(format!("DB insert error: {e}")))?;
+    .map_err(|e| {
+        if let sqlx::Error::Database(db_err) = &e {
+            if db_err.code().as_deref() == Some("23000") {
+                return ApiError::Conflict("Anda sudah absen pada hari ini.".into());
+            }
+        }
+        ApiError::Internal(format!("DB insert error: {e}"))
+    })?;
 
     let id = result.last_insert_id();
 
-    // SELECT: CAST kolom TIMESTAMP ke DATETIME agar cocok dgn NaiveDateTime
     let row: AbsensiRow = sqlx::query_as::<_, AbsensiRow>(
         r#"
         SELECT

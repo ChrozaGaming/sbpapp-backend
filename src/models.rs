@@ -4,19 +4,15 @@ use sqlx::MySqlPool;
 use std::net::IpAddr;
 use ipnet::IpNet;
 
-/* ---------------- App State ---------------- */
 #[derive(Clone)]
 pub struct AppState {
     pub pool: MySqlPool,
     pub jwt_secret: String,
-
-    // Network rules
-    pub allowed_public_ip: Option<IpAddr>, // single public IP allowed
-    pub allowed_subnet: Option<IpNet>,     // private subnet allowed
-    pub trust_x_forwarded_for: bool,       // honor X-Forwarded-For
+    pub allowed_public_ip: Option<IpAddr>,
+    pub allowed_subnet: Option<IpNet>,
+    pub trust_x_forwarded_for: bool,
 }
 
-/* ---------------- Auth ---------------- */
 #[derive(Debug, Deserialize)]
 pub struct RegisterRequest {
     pub name: String,
@@ -38,14 +34,12 @@ pub struct TokenResponse {
 
 #[derive(Debug, sqlx::FromRow)]
 pub struct User {
-    pub id: u64,                 // BIGINT UNSIGNED
+    pub id: u64,
     pub name: String,
     pub email: String,
     pub password_hash: String,
-    // Field ini memang tidak dipakai langsung di response saat ini,
-    // namun tetap kita simpan untuk kebutuhan audit/log nanti.
     #[allow(dead_code)]
-    pub created_at: NaiveDateTime, // TIMESTAMP (di-CAST ke DATETIME pada SELECT)
+    pub created_at: NaiveDateTime,
 }
 
 #[derive(Debug, Serialize)]
@@ -61,17 +55,16 @@ impl From<User> for UserPublic {
     }
 }
 
-/* ---------------- Absensi ---------------- */
 #[derive(Debug, Deserialize)]
 pub struct AbsensiRequest {
-    pub tanggal_absensi: String,   // "YYYY-MM-DD"
+    pub tanggal_absensi: String,   
     pub nama_lengkap: String,
     pub email: String,
-    pub waktu_absensi: String,     // "YYYY-MM-DD HH:MM[:SS]"
+    pub waktu_absensi: String,
     pub location_device_lat: Option<f64>,
     pub location_device_lng: Option<f64>,
-    pub status: String,            // hadir/telat/izin
-    pub ip_device: Option<String>, // diisi server
+    pub status: String,
+    pub ip_device: Option<String>
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -86,7 +79,7 @@ pub struct AbsensiRow {
     pub location_device_lat: Option<f64>,
     pub location_device_lng: Option<f64>,
     pub status: String,
-    pub created_at: NaiveDateTime, // TIMESTAMP (di-CAST ke DATETIME pada SELECT)
+    pub created_at: NaiveDateTime,
 }
 
 #[derive(Debug, Serialize)]
