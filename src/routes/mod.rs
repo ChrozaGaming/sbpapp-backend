@@ -12,6 +12,7 @@ pub fn config_routes(cfg: &mut web::ServiceConfig) {
                     .route("/register", web::post().to(auth::register))
                     .route("/login", web::post().to(auth::login))
                     .route("/me", web::get().to(auth::me))
+                    .route("/absensi/today", web::get().to(absensi::check_today_absen))
                     .route("/absensi", web::post().to(absensi::create_absensi)),
             ),
     );

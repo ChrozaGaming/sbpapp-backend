@@ -1,5 +1,5 @@
 use actix_cors::Cors;
-use actix_web::{http::header, middleware::Logger, web::Data, App, HttpServer};
+use actix_web::{middleware::Logger, web::Data, App, HttpServer};
 use dotenvy::dotenv;
 use env_logger::Env;
 use ipnet::IpNet;
@@ -15,6 +15,35 @@ mod security;
 use db::init_pool;
 use models::AppState;
 use routes::config_routes;
+
+fn parse_list_env(key: &str) -> Vec<String> {
+    env::var(key)
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+fn parse_ip_list(key: &str) -> Vec<IpAddr> {
+    parse_list_env(key)
+        .into_iter()
+        .filter_map(|s| s.parse::<IpAddr>().ok())
+        .collect()
+}
+
+fn parse_subnet_list(key: &str) -> Vec<IpNet> {
+    parse_list_env(key)
+        .into_iter()
+        .filter_map(|mut s| {
+            if !s.contains('/') {
+                // treat single IP as /32 (IPv4) or /128 (IPv6)
+                if s.contains(':') { s.push_str("/128"); } else { s.push_str("/32"); }
+            }
+            s.parse::<IpNet>().ok()
+        })
+        .collect()
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -39,57 +68,38 @@ async fn main() -> std::io::Result<()> {
 
     let jwt_secret = env::var("JWT_SECRET").unwrap_or_else(|_| "dev_secret".into());
 
-    let allowed_public_ip: Option<IpAddr> = env::var("ALLOWED_PUBLIC_IP")
-        .ok()
-        .and_then(|s| s.parse().ok());
+    let allowed_public_ips: Vec<IpAddr> = parse_ip_list("ALLOWED_PUBLIC_IP");
+    let allowed_subnets: Vec<IpNet> = parse_subnet_list("ALLOWED_SUBNET");
+    let trust_x_forwarded_for = env::var("TRUST_X_FORWARDED_FOR")
+        .unwrap_or_else(|_| "0".into()) == "1";
 
-    let allowed_subnet: Option<IpNet> = env::var("ALLOWED_SUBNET")
-        .ok()
-        .and_then(|s| s.parse().ok());
+    let allowed_origins = parse_list_env("ALLOWED_ORIGINS");
 
-    let trust_x_forwarded_for =
-        env::var("TRUST_X_FORWARDED_FOR").unwrap_or_else(|_| "0".into()) == "1";
-
-
-    let allowed_origins =
-        env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| "http://localhost:3000".into());
-    let origins: Vec<String> = allowed_origins
-        .split(',')
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-
-    // --- Bind host/port ---
     let host = env::var("HOST").unwrap_or_else(|_| "0.0.0.0".into());
     let port = env::var("PORT").unwrap_or_else(|_| "8080".into());
     let addr = format!("{}:{}", host, port);
 
-    log::info!("Server starting at http://{}", &addr);
-    log::info!("CORS allowed origins: {:?}", origins);
-    log::info!("ALLOWED_PUBLIC_IP: {:?}", allowed_public_ip);
-    log::info!("ALLOWED_SUBNET: {:?}", allowed_subnet);
+    log::info!("Server http://{}", &addr);
+    log::info!("CORS origins: {:?}", allowed_origins);
+    log::info!("Allowed IPs: {:?}", allowed_public_ips);
+    log::info!("Allowed subnets: {:?}", allowed_subnets);
     log::info!("TRUST_X_FORWARDED_FOR: {}", trust_x_forwarded_for);
 
     let app_state = AppState {
         pool,
         jwt_secret,
-        allowed_public_ip,
-        allowed_subnet,
+        allowed_public_ips,
+        allowed_subnets,
         trust_x_forwarded_for,
     };
 
     HttpServer::new(move || {
-        let cors = origins.iter().fold(
-            Cors::default()
-                .allowed_methods(vec!["GET", "POST", "OPTIONS"])
-                .allowed_headers(vec![
-                    header::CONTENT_TYPE,
-                    header::AUTHORIZATION,
-                    header::ACCEPT,
-                ])
-                .max_age(3600),
-            |c, origin| c.allowed_origin(origin),
-        );
+        let mut cors = Cors::default()
+            .allow_any_header()
+            .allowed_methods(vec!["GET", "POST", "OPTIONS"]);
+        for o in &allowed_origins {
+            cors = cors.allowed_origin(o);
+        }
 
         App::new()
             .wrap(Logger::default())

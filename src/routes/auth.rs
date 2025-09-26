@@ -61,7 +61,6 @@ pub async fn login(
 ) -> Result<HttpResponse, ApiError> {
     let LoginRequest { email, password } = body.into_inner();
 
-    // ⬇️ CAST created_at → DATETIME agar cocok dgn NaiveDateTime
     let user: Option<User> = sqlx::query_as::<_, User>(
         r#"
         SELECT

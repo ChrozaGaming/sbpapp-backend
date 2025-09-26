@@ -8,8 +8,8 @@ use ipnet::IpNet;
 pub struct AppState {
     pub pool: MySqlPool,
     pub jwt_secret: String,
-    pub allowed_public_ip: Option<IpAddr>,
-    pub allowed_subnet: Option<IpNet>,
+    pub allowed_public_ips: Vec<IpAddr>,
+    pub allowed_subnets: Vec<IpNet>,
     pub trust_x_forwarded_for: bool,
 }
 
@@ -57,7 +57,7 @@ impl From<User> for UserPublic {
 
 #[derive(Debug, Deserialize)]
 pub struct AbsensiRequest {
-    pub tanggal_absensi: String,   
+    pub tanggal_absensi: String,
     pub nama_lengkap: String,
     pub email: String,
     pub waktu_absensi: String,
