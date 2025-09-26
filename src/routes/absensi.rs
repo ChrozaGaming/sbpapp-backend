@@ -149,7 +149,7 @@ pub async fn create_absensi(
     .bind(&input.nama_lengkap)
     .bind(&input.email)
     .bind(wkt)
-    .bind(true) // ipverified = true karena sudah lolos is_ip_allowed
+    .bind(true)
     .bind(&input.ip_device)
     .bind(input.location_device_lat)
     .bind(input.location_device_lng)
